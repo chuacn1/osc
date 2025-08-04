@@ -19,7 +19,7 @@ fi
 # Check if user exists in system and update/create accordingly
 read -p "Enter username to check/add: " username
 
-if id "$username" &>/dev/null; then
+if id "$username" ; then
     # User exists in system - update shell from CSV
     echo "User '$username' exists in system!"
     
@@ -58,7 +58,6 @@ else
             echo "Created user $username with shell $shell"
         else
             echo "Failed to create user $username"
-            exit 1
         fi
     else
         # Not in CSV - collect details
@@ -72,7 +71,6 @@ else
             echo "Created user $username and added to users.csv"
         else
             echo "Failed to create user $username"
-            exit 1
         fi
     fi
 fi
