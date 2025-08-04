@@ -63,12 +63,11 @@ else
     else
         # Not in CSV - collect details
         read -p "Please enter primary group for $username: " groupname
-        read -p "Please enter supplementary groups (comma separated): " supp_groups
         read -p "Please enter shell (/bin/bash): " shell
         shell=${shell:-/bin/bash}
 
         # Create user and add to CSV
-        if sudo useradd -m -g "$groupname" -G "$supp_groups" -s "$shell" "$username"; then
+        if sudo useradd -m -g "$groupname" -G "$shell" "$username"; then
             echo "$username,$groupname,$shell" >> users.csv
             echo "Created user $username and added to users.csv"
         else
