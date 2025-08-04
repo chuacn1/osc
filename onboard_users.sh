@@ -83,8 +83,8 @@ if grep -q "^$username," users.csv; then
     if [[ $update =~ ^[Yy] ]]; then
         read -p "Enter new shell [$current_shell]: " new_shell
         new_shell=${new_shell:-$current_shell}
-    
-        sed -i "/^$username,/s/[^,]*$/$new_shell/" users.csv
+        sed -i "s/^$username,[^,]*,[^,]*/$username,,$new_shell/" users.csv
+
         log_action "Updated CSV: $username now has shell $new_shell"
         listUsers
     fi
