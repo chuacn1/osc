@@ -113,8 +113,8 @@ fi
 listGroups
 
 read -p "Enter group name: " groupname
-
-if grep -q "^$groupname," users.csv; then
+# Check if the group already exists in users.csv
+if awk -F',' -v grp="$groupname" 'NR>1 && $2 == grp {found=1} END{exit !found}' users.csv; then
     log_action "Group '$groupname' exists."
     echo "Current members:"
     awk -F',' -v grp="$groupname" '$2 == grp {print $1}' users.csv
@@ -123,10 +123,37 @@ else
     log_action "Group '$groupname' not found."
     read -p "Create new group '$groupname'? [y/N] " create_group
     if [[ $create_group =~ ^[Yy] ]]; then
-        log_action "Created new group: $groupname"
-        addingUsersGroups "$groupname"
+        # This section creates the first user in the new group.
+        read -p "Enter username to add to new group '$groupname': " username_to_add
+        
+        # Check if the user to be added already exists
+        if grep -q "^$username_to_add," users.csv; then
+            log_action "User '$username_to_add' already exists. Assigning to new group."
+            
+            # Use awk to find the existing user and update their group to the new one
+            awk -i inplace -F',' -v user="$username_to_add" -v group="$groupname" '
+            BEGIN {OFS=","}
+            NR == 1 {print; next}
+            $1 == user {$2 = group}
+            {print}' users.csv
+            
+            log_action "Assigned user '$username_to_add' to the new group '$groupname'."
+            listUsers
+            listGroups
+        else
+            # User does not exist, so we create a new entry with the new group
+            read -p "Enter shell for new user '$username_to_add' [/bin/bash]: " new_shell
+            new_shell=${new_shell:-/bin/bash}
+            
+            echo "$username_to_add,$groupname,$new_shell" >> users.csv
+            log_action "Added new user '$username_to_add' with shell '$new_shell' to new group '$groupname'."
+            listUsers
+            listGroups
+        fi
     fi
 fi
+
+# ... (rest of the script after this block)
 # ---
 # Directory and Permission Setup
 # ---
