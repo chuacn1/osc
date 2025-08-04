@@ -50,23 +50,8 @@ listGroups() {
     fi
 }
 
-addingUsersGroups() {
-    local groupname="$1"
-    read -p "Would you like to add a user to this group? [y/N] " add_user
-    if [[ $add_user =~ ^[Yy] ]]; then
-        listUsers
-       read -p "Enter username to add to new group '$groupname': " username_to_add
-        
-        # Now, add the new user and their group to the CSV file
-        echo "$username_to_add,$groupname,$shell" >> users.csv
-        
-        log_action "Added new user '$username_to_add' to new group '$groupname' with shell '$shell'."
-        listUsers
-        else
-            log_action " Error: User '$username_to_add' not found!" >&2
-        
-    fi
-}
+# The addingUsersGroups function was removed because it was a source of errors.
+# The correct logic is now in the main script body.
 
 
 # ---
@@ -118,7 +103,26 @@ if awk -F',' -v grp="$groupname" 'NR>1 && $2 == grp {found=1} END{exit !found}' 
     log_action "Group '$groupname' exists."
     echo "Current members:"
     awk -F',' -v grp="$groupname" '$2 == grp {print $1}' users.csv
-    addingUsersGroups "$groupname"
+    # This block was corrected to handle adding users to an existing group.
+    read -p "Would you like to add an existing user to this group? [y/N] " add_user
+    if [[ $add_user =~ ^[Yy] ]]; then
+        listUsers
+        read -p "Enter username to add to group '$groupname': " username_to_add
+
+        if grep -q "^$username_to_add," users.csv; then
+            awk -i inplace -F',' -v user="$username_to_add" -v group="$groupname" '
+            BEGIN {OFS=","}
+            NR == 1 {print; next}
+            $1 == user {$2 = group}
+            {print}' users.csv
+
+            log_action "Assigned user '$username_to_add' to group '$groupname' in users.csv"
+            log_action "Updated '$username_to_add' to group '$groupname'."
+            listUsers
+        else
+            log_action " Error: User '$username_to_add' not found!" >&2
+        fi
+    fi
 else
     log_action "Group '$groupname' not found."
     read -p "Create new group '$groupname'? [y/N] " create_group
@@ -154,12 +158,10 @@ else
 fi
 
 # ---
-# Directory and Permission Setup
-# ---
-# ---
 # Directory and Permission Setup - ALL BASED ON USERS.CSV
 # ---
 
+log_action "Setting up home and project directories based on users.csv."
 read -p "Enter username to setup home directory: " username
 
 if ! grep -q "^$username," users.csv; then
