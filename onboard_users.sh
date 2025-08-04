@@ -252,15 +252,18 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
     fi
 
     # Home Directory Setup
-    home_dir="/home/$username"
-    if [ ! -d "$home_dir" ]; then
-        mkdir -p "$home_dir"
-        log_action "Created home directory '$home_dir'."
-    else
-        log_action "Home directory '$home_dir' already exists."
-    fi
-    chown "$username:$groupname" "$home_dir"    chmod 700 "$home_dir"
-    log_action "Permissions and ownership corrected for '$home_dir'."
+# Home Directory Setup
+home_dir="/home/$username"
+if [ ! -d "$home_dir" ]; then
+    mkdir -p "$home_dir"
+    log_action "Created home directory '$home_dir'."
+else
+    log_action "Home directory '$home_dir' already exists."
+fi
+# Correct syntax: these are two separate commands on two separate lines.
+chown "$username:$groupname" "$home_dir"  
+chmod 700 "$home_dir"
+log_action "Permissions and ownership corrected for '$home_dir'."
 
     # Project Directory Setup
     project_dir="/opt/projects/$username"
