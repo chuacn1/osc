@@ -64,7 +64,7 @@ addingUsersGroups() {
         listUsers
         else
             log_action " Error: User '$username_to_add' not found!" >&2
-        fi
+        
     fi
 }
 
