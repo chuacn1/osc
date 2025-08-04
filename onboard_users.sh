@@ -57,20 +57,26 @@ addingUsersGroups() {
         read -p "Enter username to add to group '$groupname': " username_to_add
         
         if grep -q "^$username_to_add," users.csv; then
-            # Just REPLACE their group (like how shell is updated)
+            # ACTUALLY SET THE GROUP THIS TIME
             awk -i inplace -F',' -v user="$username_to_add" -v group="$groupname" '
             BEGIN {OFS=","}
-            NR == 1 {print; next}
-            $1 == user {$2 = group}
+            $1 == user {
+                if ($2 == "" || $2 == " ") {
+                    $2 = group  # Set group if empty
+                } else {
+                    $2 = group  # OR REPLACE existing group (change this if you want appending)
+                }
+            }
             {print}' users.csv
             
-            log_action "Updated CSV: $username_to_add now in group $groupname"
+            log_action "Added $username_to_add to group $groupname"
             listUsers
         else
-            echo "User '$username_to_add' not found."
+            echo "Error: User '$username_to_add' not found!" >&2
         fi
     fi
 }
+
 # ---
 # Main Script Logic
 # ---
@@ -116,17 +122,16 @@ listGroups
 
 read -p "Enter group name: " groupname
 
-# Check if group exists (even as part of a group list)
-if grep -q ",$groupname\(/\|,\|$\)" users.csv; then
+if awk -F',' -v grp="$groupname" 'NR>1 && $2 == grp {found=1} END{exit !found}' users.csv; then
     log_action "Group '$groupname' exists."
     echo "Current members:"
-    grep ",.*$groupname\(/\|,\|$\)" users.csv | cut -d',' -f1
+    awk -F',' -v grp="$groupname" '$2 == grp {print $1}' users.csv
     addingUsersGroups
 else
     log_action "Group '$groupname' not found."
     read -p "Create new group '$groupname'? [y/N] " create_group
     if [[ $create_group =~ ^[Yy] ]]; then
-        log_action "New group created: $groupname"
+        log_action "Created new group: $groupname"
         addingUsersGroups
     fi
 fi
