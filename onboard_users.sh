@@ -52,7 +52,7 @@ listGroups() {
 
 addingUsersGroups() {
     local groupname="$1"
-    read -p "Would you like to add an existing user to this group? [y/N] " add_user
+    read -p "Would you like to add a user to this group? [y/N] " add_user
     if [[ $add_user =~ ^[Yy] ]]; then
         listUsers
        read -p "Enter username to add to new group '$groupname': " username_to_add
@@ -153,37 +153,62 @@ else
     fi
 fi
 
-# ... (rest of the script after this block)
 # ---
 # Directory and Permission Setup
 # ---
-
 read -p "Enter username to setup home directory: " username
-home_dir="/home/$username"
 
-if [ -d "$home_dir" ]; then
-    log_action "Home directory '$home_dir' already exists."
-    chmod 700 "$home_dir" 
-    chown "$username:$username" "$home_dir"
-    log_action "Permissions and ownership corrected for '$home_dir'."
-else
-    mkdir -p "$home_dir"    
-    chmod 700 "$home_dir" 
-    chown "$username:$username" "$home_dir"
-    log_action "Created home directory '$home_dir' with 700 permissions."
+# 1. Use the CSV as the source of truth to confirm the user exists.
+if ! grep -q "^$username," users.csv; then
+    log_action "Error: User '$username' not found in users.csv. Aborting directory setup."
+    exit 1  # Exit the script if the user isn't in the CSV
 fi
 
-project_dir="/opt/projects/$username"
+# 2. Use the CSV to get the user's group and shell.
+# This ensures all actions are driven by your CSV data.
 groupname=$(awk -F',' -v user="$username" '$1 == user {print $2}' users.csv 2>/dev/null)
+usershell=$(awk -F',' -v user="$username" '$1 == user {print $3}' users.csv 2>/dev/null)
 
-if [ -d "$project_dir" ]; then
-    log_action "Project directory '$project_dir' already exists."
-    chown "$username:$groupname" "$project_dir"
-    chmod 750 "$project_dir"
-    log_action "Ownership and permissions corrected for '$project_dir'."
+# 3. Create the system user and group, ONLY if they are not already there.
+# This makes the system reflect what's in your CSV.
+if ! id -u "$username" >/dev/null 2>&1; then
+    useradd -m -s "$usershell" "$username"
+    log_action "System user '$username' created as specified in users.csv."
 else
-    mkdir -p "$project_dir"
-    chown "$username:$groupname" "$project_dir"
-    chmod 750 "$project_dir"
-    log_action "Created project directory '$project_dir' with 750 permissions."
+    log_action "System user '$username' already exists."
 fi
+
+# 4. Check if the group from the CSV exists on the system, and create it if it doesn't.
+if ! getent group "$groupname" >/dev/null; then
+    groupadd "$groupname"
+    log_action "System group '$groupname' created as specified in users.csv."
+fi
+
+# 5. Add the user to the group from the CSV.
+usermod -a -G "$groupname" "$username"
+log_action "Added user '$username' to group '$groupname' as per users.csv."
+
+# ---
+# Now that the system reflects the CSV, the chown commands will work.
+# ---
+
+home_dir="/home/$username"
+project_dir="/opt/projects/$username"
+
+# Home Directory Setup
+if [ ! -d "$home_dir" ]; then
+    mkdir -p "$home_dir"
+    log_action "Created home directory '$home_dir' as per users.csv."
+fi
+chmod 700 "$home_dir"
+chown "$username:$username" "$home_dir"
+log_action "Permissions and ownership corrected for '$home_dir' based on users.csv."
+
+# Project Directory Setup
+if [ ! -d "$project_dir" ]; then
+    mkdir -p "$project_dir"
+    log_action "Created project directory '$project_dir' as per users.csv."
+fi
+chown "$username:$groupname" "$project_dir"
+chmod 750 "$project_dir"
+log_action "Ownership and permissions corrected for '$project_dir' based on users.csv."
