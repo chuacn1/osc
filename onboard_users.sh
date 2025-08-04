@@ -50,37 +50,21 @@ listGroups() {
     fi
 }
 
-add_to_group() {
-    local username="$1"
-    local groupname="$2"
-    
-    # Check if user exists
-    if ! grep -q "^$username," users.csv; then
-        log_action "Error: User $username not found"
-        return 1
-    fi
-    
-    # Add group to user's record (appends if groups exist)
-    awk -i inplace -F',' -v user="$username" -v group="$groupname" '
-    BEGIN {OFS=","}
-    $1 == user {
-        if (NF == 2) $3 = $2; $2 = group  # Handle missing shell case
-        else if ($2 !~ group) $2 = $2 "/" group
-    }
-    {print}' users.csv
-    
-    log_action "Added $username to group $groupname"
-}
-
-addingUsersGroups() {
-    local groupname="$1"
-    read -p "Add user to group '$groupname'? [y/N] " add_user
-    [[ $add_user =~ ^[Yy] ]] || return
-    
-    listUsers
-    read -p "Enter username to add: " username
-    add_to_group "$username" "$groupname"
-    listGroups
+addingUsersGroups(){
+    read -p "Would you like to add an existing user to this group? [y/N] " add_user
+        if [[ $add_user =~ ^[Yy] ]]; then
+            listUsers
+            read -p "Enter username to add to group '$groupname': " username_to_add
+         
+            if grep -q "^$username_to_add," users.csv; then
+            awk -F',' -v user="$username_to_add" -v group="$groupname" 'BEGIN {OFS=","}
+            NR == 1 { print; next }
+            $1 == user { $2 = group }
+            { print }' users.csv > tmp.csv && mv tmp.csv users.csv
+                log_action " - Added user '$username_to_add' to group '$groupname'."
+                listGroups
+            fi
+        fi
 }
 
 # ---
@@ -127,18 +111,20 @@ fi
 listGroups
 
 read -p "Enter group name: " groupname
-if grep -q ",$groupname\(/\|$\)" users.csv; then
-    log_action "Group '$groupname' exists."
-    echo "Members:"
-    awk -F',' -v group="$groupname" '$2 ~ group {print $1}' users.csv
-    addingUsersGroups "$groupname"
+
+if grep -q ",$groupname," users.csv; then
+    log_action "Group '$groupname' exists in users.csv."
+    echo "Members:" 
+    grep ",$groupname," users.csv | cut -d',' -f1
+    addingUsersGroups
 else
-    log_action "Group '$groupname' not found."
-    read -p "Create it? [y/N] " create
-    [[ $create =~ ^[Yy] ]] && {
-        echo "$username,$groupname,/bin/bash" >> users.csv  # Example new user
-        log_action "Created group '$groupname'"
-    }
+    log_action "Group '$groupname' not found in users.csv."
+    read -p "Create new group '$groupname'? [y/N] " create_group
+    if [[ $create_group =~ ^[Yy] ]]; then
+        echo ",$groupname," >> users.csv
+        log_action "Added new group '$groupname' to users.csv"
+        addingUsersGroups
+    fi
 fi
 
 # ---
