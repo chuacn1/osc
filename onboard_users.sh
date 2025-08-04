@@ -84,8 +84,10 @@ if grep -q "^$username," users.csv; then
         read -p "Enter new shell [$current_shell]: " new_shell
         new_shell=${new_shell:-$current_shell}
     
-# This will skip the header and only modify matching user rows
-        sed -i "1!{/^$username,/ s/\([^,]*,[^,]*,\)[^,]*/\1$new_shell/}" users.csv
+        awk -F',' -v user="$username" -v new_shell="$new_shell" '
+        BEGIN {OFS=","} 
+        NR==1 || $1 != user {print} 
+        $1 == user {$3=new_shell; print}' users.csv
         log_action "Updated CSV: $username now has shell $new_shell"
         listUsers
     fi
