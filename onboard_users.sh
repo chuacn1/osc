@@ -26,7 +26,6 @@ listUsers() {
         return 1
     fi
 
-    # Check if the file has at least two lines (header + one user)
     if [ $(wc -l < "$INPUT_FILE") -lt 2 ]; then
         log_action "Warning: $INPUT_FILE is empty or only contains a header."
         return 0
@@ -34,7 +33,6 @@ listUsers() {
 
     log_action "Listing users from $INPUT_FILE:"
     while IFS=',' read -r username groupname shell; do
-        # Skip the header
         if [[ "$username" == "username" ]]; then
             continue
         fi
@@ -81,12 +79,15 @@ fi
 
 log_action "Starting user onboarding and management process."
 
-# Interactive User Management Section
+# ---
+# Interactive CSV File Management
+# This section allows you to modify the users.csv file. No system changes are made here.
+# ---
+
 listUsers
 
-read -p "Enter username to check (or press Enter to skip): " username_check
+read -p "Enter username to check (or press Enter to skip CSV management): " username_check
 if [ -n "$username_check" ]; then
-    # Input validation for username
     if ! validate_input "$username_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid username format '$username_check'. Usernames must start with a lowercase letter or underscore, and contain only lowercase letters, numbers, hyphens, or underscores, with a maximum length of 32 characters." >&2
     else
@@ -96,10 +97,8 @@ if [ -n "$username_check" ]; then
             IFS=',' read -r -a user_data <<< "$current_line"
             current_group="${user_data[1]}"
             current_shell="${user_data[2]}"
-
             log_action "Current group in CSV: $current_group"
             log_action "Current shell in CSV: $current_shell"
-
             read -p "Update user '$username_check' [y/N]? " update_user
             if [[ "$update_user" =~ ^[Yy]$ ]]; then
                 read -p "Enter new group [$current_group]: " new_group
@@ -110,14 +109,8 @@ if [ -n "$username_check" ]; then
                     read -p "Enter new shell [$current_shell]: " new_shell
                     new_shell=${new_shell:-$current_shell}
                     if [ ! -x "$new_shell" ] && [ "$new_shell" != "default" ]; then
-                        log_action "Warning: Shell '$new_shell' does not appear to be a valid executable."
-                        read -p "Are you sure you want to proceed with this shell? [y/N] " confirm_shell
-                        if [[ ! "$confirm_shell" =~ ^[Yy]$ ]]; then
-                            log_action "Shell update cancelled."
-                            new_shell="$current_shell"
-                        fi
+                        log_action "Warning: Shell '$new_shell' does not appear to be a valid executable. Proceeding anyway."
                     fi
-
                     awk -i inplace -F',' -v user="$username_check" -v group="$new_group" -v shell="$new_shell" '
                     BEGIN {OFS=","}
                     $1 == user {$2 = group; $3 = shell}
@@ -146,38 +139,22 @@ if [ -n "$username_check" ]; then
     fi
 fi
 
-# Group Management Section
+# Group management section (modifies the CSV file)
 listGroups
-
 read -p "Enter group name to manage (or press Enter to skip): " groupname_check
 if [ -n "$groupname_check" ]; then
     if ! validate_input "$groupname_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid group name format '$groupname_check'. Management aborted." >&2
     else
-        # Check if the group exists in the CSV
         if awk -F',' -v grp="$groupname_check" 'NR>1 && $2 == grp {found=1} END{exit !found}' "$INPUT_FILE"; then
             log_action "Group '$groupname_check' exists."
-            log_action "Current members:"
-            awk -F',' -v grp="$groupname_check" 'NR>1 && $2 == grp {print " - " $1}' "$INPUT_FILE"
-
-            read -p "Would you like to add an existing user to this group? [y/N] " add_user
+            read -p "Add an existing user to this group? [y/N] " add_user
             if [[ "$add_user" =~ ^[Yy]$ ]]; then
                 listUsers
                 read -p "Enter username to add to group '$groupname_check': " user_to_add
                 if grep -q "^$user_to_add," "$INPUT_FILE"; then
-                    # Check if the user is already in a group
-                    user_group=$(grep "^$user_to_add," "$INPUT_FILE" | cut -d',' -f2)
-                    if [ -n "$user_group" ] && [ "$user_group" != "$groupname_check" ]; then
-                        log_action "Warning: User '$user_to_add' is already in group '$user_group'. This will change their primary group."
-                        read -p "Continue and reassign user to group '$groupname_check'? [y/N] " confirm_reassign
-                        if [[ ! "$confirm_reassign" =~ ^[Yy]$ ]]; then
-                            log_action "Reassignment cancelled."
-                            exit 0
-                        fi
-                    fi
                     awk -i inplace -F',' -v user="$user_to_add" -v group="$groupname_check" '
                     BEGIN {OFS=","}
-                    NR == 1 {print; next}
                     $1 == user {$2 = group}
                     {print}' "$INPUT_FILE"
                     log_action "Assigned user '$user_to_add' to group '$groupname_check' in $INPUT_FILE."
@@ -187,37 +164,23 @@ if [ -n "$groupname_check" ]; then
                 fi
             fi
         else
-            log_action "Group '$groupname_check' not found."
-            read -p "Create new group '$groupname_check'? [y/N] " create_group
-            if [[ "$create_group" =~ ^[Yy]$ ]]; then
-                read -p "Enter username to add to new group '$groupname_check': " user_to_add
-                if grep -q "^$user_to_add," "$INPUT_FILE"; then
-                    log_action "User '$user_to_add' exists. Assigning to new group."
-                    awk -i inplace -F',' -v user="$user_to_add" -v group="$groupname_check" '
-                    BEGIN {OFS=","}
-                    NR == 1 {print; next}
-                    $1 == user {$2 = group}
-                    {print}' "$INPUT_FILE"
-                    log_action "Assigned user '$user_to_add' to the new group '$groupname_check'."
-                    listGroups
-                else
-                    read -p "Enter shell for new user '$user_to_add' [/bin/bash]: " new_shell
-                    new_shell=${new_shell:-/bin/bash}
-                    if [ ! -x "$new_shell" ]; then
-                        log_action "Warning: Shell '$new_shell' does not appear to be a valid executable. Proceeding anyway."
-                    fi
-                    echo "$user_to_add,$groupname_check,$new_shell" >> "$INPUT_FILE"
-                    log_action "Added new user '$user_to_add' with shell '$new_shell' to new group '$groupname_check'."
-                    listGroups
-                fi
-            fi
+            log_action "Group '$groupname_check' not found. This will be created later if a user is assigned to it."
         fi
     fi
 fi
 
 # ---
-# Directory and Permission Setup - ALL BASED ON USERS.CSV
+# System Provisioning Based on users.csv
+# This section reads the entire CSV and makes system-level changes.
 # ---
+
+echo "------------------------------------------------------"
+read -p "Do you want to proceed with system provisioning based on '$INPUT_FILE'? This will create/update users, groups, and directories. [y/N] " confirm_provisioning
+
+if [[ ! "$confirm_provisioning" =~ ^[Yy]$ ]]; then
+    log_action "System provisioning cancelled by user. Exiting."
+    exit 0
+fi
 
 log_action "Starting system-level user and directory setup from $INPUT_FILE."
 tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; do
@@ -267,10 +230,9 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
                 continue
             fi
         else
-            # Create user with a default primary group
             if useradd -m -s "$usershell" "$username"; then
                 log_action "System user '$username' created with default primary group '$username'."
-                groupname="$username" # Set groupname to the default created group
+                groupname="$username"
             else
                 log_action "Error: Failed to create system user '$username'." >&2
                 continue
