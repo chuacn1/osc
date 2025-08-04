@@ -100,7 +100,6 @@ while true; do
     # Validate the input
     if ! validate_input "$username_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid username format '$username_check'. Usernames must start with a lowercase letter or underscore, and contain only lowercase letters, numbers, hyphens, or underscores, with a maximum length of 32 characters." >&2
-        # Loop continues, prompting the user again
     else
         # Valid username provided, proceed with the logic
         if grep -q "^$username_check," "$INPUT_FILE"; then
@@ -125,7 +124,6 @@ while true; do
                     if [ ! -x "$new_shell" ] && [ "$new_shell" != "default" ]; then
                         log_action "Warning: Shell '$new_shell' does not appear to be a valid executable. Proceeding anyway."
                     fi
-
                     awk -i inplace -F',' -v user="$username_check" -v group="$new_group" -v shell="$new_shell" '
                     BEGIN {OFS=","}
                     $1 == user {$2 = group; $3 = shell}
@@ -151,29 +149,25 @@ while true; do
                 fi
             fi
         fi
-        # Break the loop after a valid username is processed
         break
     fi
+done
 
 # Group management section (modifies the CSV file)
-# Group Management Section
 listGroups
 
 groupname_check=""
 while true; do
     read -p "Enter group name to manage (or press Enter to skip): " groupname_check
 
-    # If user presses Enter to skip, break the loop
     if [ -z "$groupname_check" ]; then
         log_action "Skipping interactive group management."
         break
     fi
 
-    # Validate the input
     if ! validate_input "$groupname_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid group name format '$groupname_check'. Management aborted." >&2
     else
-        # Check if the group exists in the CSV
         if awk -F',' -v grp="$groupname_check" 'NR>1 && $2 == grp {found=1} END{exit !found}' "$INPUT_FILE"; then
             log_action "Group '$groupname_check' exists."
             log_action "Current members:"
@@ -230,9 +224,9 @@ while true; do
                 fi
             fi
         fi
-        # Break the loop after a valid group is processed
         break
     fi
+done
 
 # ---
 # System Provisioning Based on users.csv
@@ -317,18 +311,16 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
     fi
 
     # Home Directory Setup
-# Home Directory Setup
-home_dir="/home/$username"
-if [ ! -d "$home_dir" ]; then
-    mkdir -p "$home_dir"
-    log_action "Created home directory '$home_dir'."
-else
-    log_action "Home directory '$home_dir' already exists."
-fi
-# Correct syntax: these are two separate commands on two separate lines.
-chown "$username:$groupname" "$home_dir"  
-chmod 700 "$home_dir"
-log_action "Permissions and ownership corrected for '$home_dir'."
+    home_dir="/home/$username"
+    if [ ! -d "$home_dir" ]; then
+        mkdir -p "$home_dir"
+        log_action "Created home directory '$home_dir'."
+    else
+        log_action "Home directory '$home_dir' already exists."
+    fi
+    chown "$username:$groupname" "$home_dir"  
+    chmod 700 "$home_dir"
+    log_action "Permissions and ownership corrected for '$home_dir'."
 
     # Project Directory Setup
     project_dir="/opt/projects/$username"
