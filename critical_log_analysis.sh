@@ -1,0 +1,1 @@
+grep -i -E "ERROR|CRITICAL|FATAL" sys_log.txt
