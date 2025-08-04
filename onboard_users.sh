@@ -1,4 +1,5 @@
 #!/bin/bash
+
 LOG_FILE="/var/log/user_onboarding_audit.log"
 INPUT_FILE="users.csv"
 
@@ -6,11 +7,13 @@ INPUT_FILE="users.csv"
 # Functions
 # ---
 
+# Function to log messages with a timestamp to both stdout and a log file.
 log_action() {
     local message="$1"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $message" | tee -a "$LOG_FILE"
 }
 
+# Function to validate user input against a provided regex pattern.
 validate_input() {
     local input_value="$1"
     local pattern="$2"
@@ -20,6 +23,7 @@ validate_input() {
     return 0 # Valid
 }
 
+# Function to list all users from the CSV file.
 listUsers() {
     if [ ! -f "$INPUT_FILE" ]; then
         log_action "Error: $INPUT_FILE not found." >&2
@@ -40,6 +44,7 @@ listUsers() {
     done < <(tail -n +2 "$INPUT_FILE")
 }
 
+# Function to list all unique groups and their members from the CSV file.
 listGroups() {
     if [ ! -f "$INPUT_FILE" ]; then
         log_action "Error: $INPUT_FILE not found." >&2
@@ -71,7 +76,7 @@ listGroups() {
 # Main Script Logic
 # ---
 
-# Pre-checks before starting
+# Initial check to ensure the input file exists before starting.
 if [ ! -f "$INPUT_FILE" ]; then
     log_action "Critical Error: $INPUT_FILE not found. Cannot proceed." >&2
     exit 1
@@ -80,28 +85,29 @@ fi
 log_action "Starting user onboarding and management process."
 
 # ---
-# Interactive CSV File Management
+# CSV File Management
 # This section allows you to modify the users.csv file. No system changes are made here.
 # ---
 
-# Interactive User Management Section
+# User Management Section
 listUsers
 
 username_check=""
+# Loop to continuously prompt for a valid username until it's correct or skipped.
 while true; do
     read -p "Enter username to check (or press Enter to skip CSV management): " username_check
     
-    # If user presses Enter to skip, break the loop
+    # Check if the user wants to skip this section.
     if [ -z "$username_check" ]; then
-        log_action "Skipping interactive user management."
+        log_action "Skipping user management."
         break
     fi
 
-    # Validate the input
+    # Validate the format of the entered username.
     if ! validate_input "$username_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid username format '$username_check'. Usernames must start with a lowercase letter or underscore, and contain only lowercase letters, numbers, hyphens, or underscores, with a maximum length of 32 characters." >&2
     else
-        # Valid username provided, proceed with the logic
+        # Logic to either update an existing user or create a new entry in the CSV.
         if grep -q "^$username_check," "$INPUT_FILE"; then
             log_action "User '$username_check' exists in $INPUT_FILE!"
             current_line=$(grep "^$username_check," "$INPUT_FILE")
@@ -157,17 +163,21 @@ done
 listGroups
 
 groupname_check=""
+# Loop to continuously prompt for a valid group name until it's correct or skipped.
 while true; do
     read -p "Enter group name to manage (or press Enter to skip): " groupname_check
 
+    # Check if the user wants to skip this section.
     if [ -z "$groupname_check" ]; then
-        log_action "Skipping interactive group management."
+        log_action "Skipping group management."
         break
     fi
 
+    # Validate the format of the entered group name.
     if ! validate_input "$groupname_check" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Invalid group name format '$groupname_check'. Management aborted." >&2
     else
+        # Logic to manage existing groups or create new group entries in the CSV.
         if awk -F',' -v grp="$groupname_check" 'NR>1 && $2 == grp {found=1} END{exit !found}' "$INPUT_FILE"; then
             log_action "Group '$groupname_check' exists."
             log_action "Current members:"
@@ -234,6 +244,7 @@ done
 # ---
 
 echo "------------------------------------------------------"
+# Prompt for final confirmation before starting system-level changes.
 read -p "Do you want to proceed with system provisioning based on '$INPUT_FILE'? This will create/update users, groups, and directories. [y/N] " confirm_provisioning
 
 if [[ ! "$confirm_provisioning" =~ ^[Yy]$ ]]; then
@@ -242,20 +253,24 @@ if [[ ! "$confirm_provisioning" =~ ^[Yy]$ ]]; then
 fi
 
 log_action "Starting system-level user and directory setup from $INPUT_FILE."
+# Loop through each user entry in the CSV file, skipping the header.
 tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; do
-    # Skip lines with missing or invalid data
+    # Skip lines with missing or invalid data.
     if [ -z "$username" ] || [ -z "$usershell" ]; then
         log_action "Error: Skipping line due to missing username or shell: '$username,$groupname,$usershell'." >&2
         continue
     fi
+    # Validate the username format before attempting to process.
     if ! validate_input "$username" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Skipping user '$username' due to invalid username format." >&2
         continue
     fi
+    # Validate the group name format before attempting to process.
     if [ -n "$groupname" ] && ! validate_input "$groupname" '^[a-z_][a-z0-9_-]{0,31}$'; then
         log_action "Error: Skipping user '$username' due to invalid group name '$groupname'." >&2
         continue
     fi
+    # Check if the shell is a valid executable.
     if [ -n "$usershell" ] && [ ! -x "$usershell" ]; then
         log_action "Warning: User '$username' has an invalid shell '$usershell'. Setting to default '/bin/bash'."
         usershell="/bin/bash"
@@ -263,7 +278,7 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
 
     log_action "Processing user '$username'..."
 
-    # Ensure the group exists on the system
+    # Check if the group exists and create it if it doesn't.
     if [ -n "$groupname" ]; then
         if getent group "$groupname" >/dev/null; then
             log_action "System group '$groupname' already exists."
@@ -277,7 +292,7 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
         fi
     fi
 
-    # Create the user if they don't exist
+    # Check if the user exists and create them if they don't.
     if id -u "$username" >/dev/null 2>&1; then
         log_action "System user '$username' already exists."
     else
@@ -299,7 +314,7 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
         fi
     fi
 
-    # Ensure user is a member of the specified group
+    # Ensure the user is a member of the specified group.
     if [ -n "$groupname" ]; then
         if ! id -nG "$username" | grep -qw "$groupname"; then
             if usermod -a -G "$groupname" "$username"; then
@@ -312,24 +327,28 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
 
     # Home Directory Setup
     home_dir="/home/$username"
+    # Create the home directory if it doesn't exist.
     if [ ! -d "$home_dir" ]; then
         mkdir -p "$home_dir"
         log_action "Created home directory '$home_dir'."
     else
         log_action "Home directory '$home_dir' already exists."
     fi
+    # Correct ownership and permissions for the home directory.
     chown "$username:$groupname" "$home_dir"  
     chmod 700 "$home_dir"
     log_action "Permissions and ownership corrected for '$home_dir'."
 
     # Project Directory Setup
     project_dir="/opt/projects/$username"
+    # Create the project directory if it doesn't exist.
     if [ ! -d "$project_dir" ]; then
         mkdir -p "$project_dir"
         log_action "Created project directory '$project_dir'."
     else
         log_action "Project directory '$project_dir' already exists."
     fi
+    # Correct ownership and permissions for the project directory.
     chown "$username:$groupname" "$project_dir"
     chmod 750 "$project_dir"
     log_action "Ownership and permissions corrected for '$project_dir'."
