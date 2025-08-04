@@ -259,8 +259,7 @@ tail -n +2 "$INPUT_FILE" | while IFS=',' read -r username groupname usershell; d
     else
         log_action "Home directory '$home_dir' already exists."
     fi
-    chown "$username:$username" "$home_dir"
-    chmod 700 "$home_dir"
+    chown "$username:$groupname" "$home_dir"    chmod 700 "$home_dir"
     log_action "Permissions and ownership corrected for '$home_dir'."
 
     # Project Directory Setup
